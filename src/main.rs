@@ -3,23 +3,17 @@
 
 extern crate rocket;
 extern crate csv;
-#[macro_use] extern crate rocket_contrib;
+extern crate slug;
 extern crate rustc_serialize;
+#[macro_use] extern crate rocket_contrib;
 
 use rocket_contrib::{JSON, Value};
+use std::collections::HashMap;
 
 #[derive(RustcDecodable)]
-struct RocketData {
-    vehicle: String,
-    origin: String,
-    manufacturer: String,
-    to_leo: String,
-    to_gto: String,
-    to_other: String,
-    launches: String,
-    first_flight: String,
-    last_flight: String,
-    retired: String
+struct CSVData {
+    headers: Vec<String>,
+    rows: Vec<Vec<String>>
 }
 
 #[derive(Debug)]
@@ -33,36 +27,44 @@ impl From<csv::Error> for ParseError {
     }
 }
 
-fn parse_csv() -> Result<Vec<RocketData>, ParseError> {
-    let mut rdr = csv::Reader::from_file("./data/data.csv")?;
+fn parse_csv() -> Result<CSVData, ParseError> {
+    let mut rdr = csv::Reader::from_file("./data/wholesale.csv")?;
 
-    let mut rocket_data: Vec<RocketData> = Vec::new();
+    let  headers: Vec<String> = rdr.headers()?.into_iter().map(move |header| {
+        slug::slugify(header)
+    }).collect();
+
+    let mut rows: Vec<Vec<String>> = Vec::new();
 
     for record in rdr.decode() {
-        let record: RocketData = record?;
+        let record: Vec<String> = record?;
 
         // convert to read the headers and slugify them and then return header and string vector
 
-        rocket_data.push(record);
+        rows.push(record);
     }
 
-    Ok(rocket_data)
+    Ok(CSVData {
+        headers,
+        rows
+    })
 }
 
-fn to_json_arr(rocket_data: Vec<RocketData>) -> Vec<Value> {
+fn to_json_arr(csv_data: CSVData) -> Vec<Value> {
      // convert the new vector to a JSON object
-     rocket_data.iter().map(|rocket| json!({
-        "vehicle": rocket.vehicle,
-        "origin": rocket.origin,
-        "manufacturer": rocket.manufacturer,
-        "to_leo": rocket.to_leo,
-        "to_gto": rocket.to_gto,
-        "to_other": rocket.to_other,
-        "launches": rocket.launches,
-        "first_fight": rocket.launches,
-        "last_flight": rocket.last_flight,
-        "retired": rocket.retired
-     })).collect()
+     let mut json_arr: Vec<Value> = Vec::new();
+
+     for row in csv_data.rows.iter() {
+        let mut csv_row: HashMap<String, String> = HashMap::new();
+
+        for (i, header) in csv_data.headers.iter().enumerate() {
+            csv_row.insert(header.clone(), row[i].clone());
+        }
+
+        json_arr.push(json!(csv_row));
+     }
+
+     json_arr
 }
 
 #[get("/")]
